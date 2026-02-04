@@ -1,0 +1,10 @@
+prefix=/var/folders/q7/gf1tzxgx0y71xpw_q4zygtnw0000gn/T/tmpcobwjuvv/wheel/platlib
+exec_prefix=/var/folders/q7/gf1tzxgx0y71xpw_q4zygtnw0000gn/T/tmpcobwjuvv/wheel/platlib
+libdir=/var/folders/q7/gf1tzxgx0y71xpw_q4zygtnw0000gn/T/tmpcobwjuvv/wheel/platlib/lib
+includedir=/var/folders/q7/gf1tzxgx0y71xpw_q4zygtnw0000gn/T/tmpcobwjuvv/wheel/platlib/include
+
+Name: llama
+Description: Port of Facebook's LLaMA model in C/C++
+Version: 0.0.1
+Libs: -L${libdir} -lggml -lggml-base -lllama
+Cflags: -I${includedir}
