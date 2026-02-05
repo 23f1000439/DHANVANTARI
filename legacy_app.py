@@ -167,7 +167,7 @@ if role == 'patient':
 elif role == 'doctor':
     st.markdown('<div class="main-header">🩺 Doctor Workspace</div>', unsafe_allow_html=True)
     
-    tab1, tab2 = st.tabs(["Clinical Search", "Patient Rounds"])
+    tab1, tab2, tab3 = st.tabs(["Clinical Search", "Patient Rounds", "Imaging Triage ⚠️"])
     
     with tab1:
         st.subheader("🧠 Evidence-Based Clinical Search")
@@ -176,7 +176,7 @@ elif role == 'doctor':
         # Mock patient selector for context
         conn = get_db_connection()
         patients = conn.execute("SELECT p.id, u.full_name, p.conditions FROM patients p JOIN users u ON p.user_id = u.id").fetchall()
-        selected_p_id = st.selectbox("Context Patient (Optional):", [p['id'] for p in patients], format_func=lambda x: [p['full_name'] for p in patients if p['id'] == x][0])
+        selected_p_id_search = st.selectbox("Context Patient (Optional):", [p['id'] for p in patients], format_func=lambda x: [p['full_name'] for p in patients if p['id'] == x][0], key="search_pat")
         
         if st.button("Search Protocols"):
             if query:
@@ -195,6 +195,61 @@ elif role == 'doctor':
         df = pd.DataFrame(patients, columns=["ID", "Name", "Conditions"])
         st.dataframe(df)
 
+    with tab3:
+        st.subheader("⚡️ AI Imaging Triage (Edge + Cloud)")
+        
+        # 1. Simulate Image Upload
+        img_file = st.file_uploader("Upload Scan (X-Ray/CT/MRI)", type=["png", "jpg", "dcm"])
+        
+        # Mock patient selector for imaging
+        selected_p_id_img = st.selectbox("Select Patient:", [p['id'] for p in patients], format_func=lambda x: [p['full_name'] for p in patients if p['id'] == x][0], key="img_pat")
+
+        # Mock feature tags input (Simulating Vision Model)
+        st.markdown("**Simulated Vision Encoder Output:**")
+        tags_input = st.text_input("Enter detected visual tags (comma separated):", value="large right-sided pneumothorax, midline shift, mediastinal deviation")
+        
+        if st.button("Process Scan"):
+            from app.application.services.imaging_orchestrator import ImagingOrchestrator
+            orch = ImagingOrchestrator()
+            
+            # Fetch Clinical Notes Context
+            p_notes = "Patient complaining of sudden onset chest pain and shortness of breath." # Mock
+            
+            with st.status("Running Hybrid Triage Pipeline...", expanded=True) as status:
+                st.write("1️⃣  Edge: Local MedGemma analyzing features...")
+                time.sleep(1) # Visual effect
+                
+                # Split tags
+                tags = [t.strip() for t in tags_input.split(",")]
+                
+                results = orch.process_scan(selected_p_id_img, img_file, tags, p_notes)
+                
+                triage = results["stage_1_triage"]
+                if triage["classification"] == "URGENT_ABNORMAL":
+                    st.error(f"🚨 TRIAGE ALERT: {triage['classification']}")
+                    st.write(f"Latency: {triage['latency_ms']}ms (Edge Check Passed)")
+                    
+                    st.write("2️⃣  Cloud: Gemini 3 Pro generating preliminary report...")
+                    report = results["stage_2_report"]
+                    
+                    st.success("Report Generated Successfully!")
+                    status.update(label="Triage Complete: URGENT", state="error", expanded=True)
+                    
+                    st.divider()
+                    st.markdown("### 📝 Preliminary AI Report")
+                    st.markdown(f"**Impression:** {report.get('impression')}")
+                    st.markdown(f"**Findings:**")
+                    for f in report.get('findings', []):
+                        st.markdown(f"- {f}")
+                    st.warning(f"**Recommendation:** {report.get('recommendations', ['Review ASAP'])[0]}")
+                    st.caption(report.get('disclaimer'))
+                    
+                else:
+                    st.success(f"✅ TRIAGE STATUS: {triage['classification']}")
+                    st.write(f"Latency: {triage['latency_ms']}ms (Edge Check Passed)")
+                    st.info("No urgent findings detected. Added to routine queue.")
+                    status.update(label="Triage Complete: NORMAL", state="complete", expanded=False)
+
 # ---------------- ADMIN PORTAL ----------------
 elif role == 'admin':
     st.markdown('<div class="main-header">📊 Revenue & Operations</div>', unsafe_allow_html=True)
@@ -210,20 +265,40 @@ elif role == 'admin':
     note = st.text_area("Clinical Note Input", value=default_note, height=150)
     
     if st.button("Generate ICD-11 Codes"):
-        with st.spinner("Analyzing with Gemini 3 Pro (JSON Mode)..."):
-            codes = st.session_state.ai_service.generate_medical_codes(note)
+        # Import NER Service locally to avoid scope pollution if not needed elsewhere
+        from app.application.services.clinical_ner import ClinicalNERService
+        ner_service = ClinicalNERService()
+        
+        # Mock Context for Admin Demo
+        patient_context = {
+            "patient_age": 45,
+            "conditions": ["Type 2 Diabetes"],
+            "medications": ["Lisinopril"]
+        }
+
+        with st.spinner("Stage 1: Local MedGemma extracting entities..."):
+            entities = ner_service.extract_entities(note)
+            st.info(f"Found {len(entities)} clinical entities: {[e['text'] for e in entities]}")
+        
+        with st.spinner("Stage 2: Gemini 3 Pro reasoning through mappings..."):
+            # Call the new reasoning method
+            result = st.session_state.ai_service.generate_icd11_with_reasoning(
+                entities, note, patient_context
+            )
             
-            # Display nicely
-            if codes:
-                for item in codes:
-                    # Highlight low confidence
-                    conf = item.get('confidence', 0.5)
-                    color = "green" if conf > 0.8 else "orange"
-                    st.markdown(f"""
-                    <div style="border: 1px solid #ddd; padding: 10px; border-radius: 5px; margin-bottom: 5px; border-left: 5px solid {color};">
-                        <strong>{item.get('code')}</strong>: {item.get('description')} <br>
-                        <small>Confidence: {int(conf*100)}%</small>
-                    </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.warning("No codes generated or error occurred.")
+            codes = result.get("codes", [])
+            reasoning = result.get("reasoning_summary", "No reasoning provided.")
+            
+            st.markdown(f"**Reasoning Summary:** {reasoning}")
+            
+            # Display results with audit justifications
+            for code in codes:
+                confidence = code.get("confidence", 0.0)
+                color = "green" if confidence > 0.85 else "orange"
+                st.markdown(f"""
+                <div style="border-left: 5px solid {color}; padding: 10px; background-color: #f1f1f1; margin-bottom: 5px;">
+                    <strong>{code.get('code')}</strong> - {code.get('description')} 
+                    <br><small>Confidence: {int(confidence*100)}%</small>
+                    <br><em>Justification:</em> {code.get('justification')}
+                </div>
+                """, unsafe_allow_html=True)

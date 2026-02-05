@@ -1,11 +1,12 @@
 from ..base_orchestrator import BaseDomainOrchestrator
 from ....infrastructure.ai.gemini import GeminiAgent
+from .billing import BillingAgent
 
 class AdminOrchestrator(BaseDomainOrchestrator):
     def __init__(self):
         super().__init__("AdminOrchestrator")
         self.claims_agent = GeminiAgent("ClaimsAgent")
-        self.billing_agent = GeminiAgent("BillingAgent") # Legacy name mapping
+        self.billing_agent = BillingAgent() # Specialized Agent
         self.scheduling_agent = GeminiAgent("SchedulingAgent")
 
     def route_request(self, user_query, conversation_id, context=None):
