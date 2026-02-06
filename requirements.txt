@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+pydantic
+sqlalchemy
+google-generativeai
+llama-cpp-python
+huggingface_hub
+python-multipart
+scikit-learn
+joblib
+numpy
+pytest
+python-dotenv
